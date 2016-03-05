@@ -1,0 +1,60 @@
+---
+title: "Practical Machine Learning"
+author: "Alberto Palomo"
+date: "March 5, 2016"
+output: html_document
+---
+
+This is the final project for Practical Machine Learning.
+
+Preliminaries:
+```{r, cache=TRUE}
+library(caret)
+set.seed(123)
+```
+
+First we load the .CSV files:
+```{r, cache=TRUE}
+training= read.csv("~/Desktop/pml-training.csv")
+testing= read.csv("~/Desktop/pml-testing.csv")
+dim(training)
+dim(testing)
+```
+and split the training set in a training subset and a validation subset:
+```{r, cache=TRUE}
+inTrain= createDataPartition(y=training$classe, p=0.6, list=FALSE)
+trainSubset= training[inTrain,]
+validationSubset= training[-inTrain,]
+dim(trainSubset)
+dim(validationSubset)
+```
+Then we analyse which covariates are worthless for creating a prediction model:
+```{r,cache=TRUE}
+nzv1<- nearZeroVar(training)
+nzv2<- nearZeroVar(testing)
+```
+Because nzv2 contains nzv1, which is where ultimately the model will be evaluated, we decide to model taking into account only those features with variability (i.e.~those not in nzv2):
+```{r, cache=TRUE}
+dim(training[,-c(nzv2)])
+```
+I tried a bunch of data mining techniques, which I shall spare the reader from enduring their analyses. I only include the optimal one: a Random Forest algorithm, which I executed in a parallel framework. This RF included a 10-fold cross-validation technique to fit the algorithm (note this is not the same as using a 'validation' set to test the out-of-sample error, which we also do later):
+```{r, cache=TRUE}
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+mtryGrid<- expand.grid(mtry= 2)
+fitControl<- trainControl(method="cv", number=10, allowParallel = TRUE)
+predRF<- train(classe~., data=trainSubset[,-c(nzv2)], method='rf', tuneGrid = mtryGrid, trControl=fitControl)
+```
+```{r}
+predRF
+```
+To study the OOS error, we predict the accuracy of the validation subset:
+```{r,dependson="randomForest"}
+sum(predict(predRF, validationSubset)==validationSubset$classe)/length(validationSubset$classe)
+```
+We now predict on the Quiz set, and we obtain 100% accuracy as per Coursera homework:
+```{r}
+predict(predRF, testing)
+```
